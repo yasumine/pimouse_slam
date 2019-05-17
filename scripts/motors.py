@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 #encoding: utf8
-import sys, rospy, math
+import sys, rospy, math, tf
 from pimouse_ros.msg import MotorFreqs
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Trigger, TriggerResponse
 from pimouse_ros.srv import TimedMotion
-
+from nav_msgs.msg import Odometry
 
 class Motor():
     def __init__(self):
@@ -20,6 +20,15 @@ class Motor():
 
         self.last_time = rospy.Time.now()
         self.using_cmd_vel = False
+
+        self.pub_odm = rospy.Publisher('odom', Odometry, queue_size=10)
+        self.bc_odm = tf.TransformBroadcaster()
+
+        self.x, self.y self.th = 0.0, 0.0, 0.0
+        self.vx, self.vth = 0.0, 0.0
+
+        self.cur_time = rospy.Time.now()
+        self.last_time = self.cur_time
 
     def set_power(self,onoff=False):
         en = "/dev/rtmotoren0"
@@ -49,6 +58,11 @@ class Motor():
         self.set_raw_freq(message.left_hz,message.right_hz)
 
     def callback_cmd_vel(self,message):
+        if not self.is_on:
+            return
+        self.vx = message.linear.x
+        self.vth = message.angular.z
+
         forward_hz = 80000.0*message.linear.x/(9*math.pi)
         rot_hz = 400.0*message.angular.z/math.pi
         self.set_raw_freq(forward_hz-rot_hz,forward_hz+rot_hz)
@@ -80,6 +94,32 @@ class Motor():
 
         return True
     
+    def send_odm(self):
+        self.cur_time = rospy.Time.now()
+
+        dt = self.cur_time.to_sec() - self.last_time.to_sec()
+        self.x += self.vx * math.cos(self.th) * dt
+        self.y += self.vx * math.sin(self.th) * dt
+        self.th += self.vth * dt
+
+        q = tf.transformations.quaternion_from_euler(0, 0, self.th)
+        self.bc_odm.sendTransform((self.x,self.y,0.0), q, self.cur_time,"base_link","odom")
+
+        odom = Odometry()
+        odom.header.stamp = self.cur_time
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
+
+        odom.pose.pose.position = point(self.x,self.y,0)
+        odom.pose.pose.orientation = Quaternion(*q)
+
+        odom.twist.twist.linear.x = self.vx
+        odom.twist.twist.linear.y = self.0.0
+        odom.twist.twist.angular.z = self.vth
+        
+        self.pub_odm.publish(odom)
+
+        self.last_time = self.cur_time
 
 if __name__ == '__main__':
     rospy.init_node('motors')
@@ -87,7 +127,5 @@ if __name__ == '__main__':
 
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
-        if m.using_cmd_vel and rospy.Time.now().to_sec() - m.last_time.to_sec() >= 1.0:
-            m.set_raw_freq(0,0)
-            m.using_cmd_vel = False
+        m.send_odm()
         rate.sleep()
