@@ -2,7 +2,7 @@
 #encoding: utf8
 import sys, rospy, math, tf
 from pimouse_ros.msg import MotorFreqs
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Quaternion, TransformStamped, Point
 from std_srvs.srv import Trigger, TriggerResponse
 from pimouse_ros.srv import TimedMotion
 from nav_msgs.msg import Odometry
@@ -24,7 +24,7 @@ class Motor():
         self.pub_odm = rospy.Publisher('odom', Odometry, queue_size=10)
         self.bc_odm = tf.TransformBroadcaster()
 
-        self.x, self.y self.th = 0.0, 0.0, 0.0
+        self.x, self.y, self.th = 0.0, 0.0, 0.0
         self.vx, self.vth = 0.0, 0.0
 
         self.cur_time = rospy.Time.now()
@@ -110,11 +110,11 @@ class Motor():
         odom.header.frame_id = "odom"
         odom.child_frame_id = "base_link"
 
-        odom.pose.pose.position = point(self.x,self.y,0)
+        odom.pose.pose.position = Point(self.x, self.y, 0)
         odom.pose.pose.orientation = Quaternion(*q)
 
         odom.twist.twist.linear.x = self.vx
-        odom.twist.twist.linear.y = self.0.0
+        odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = self.vth
         
         self.pub_odm.publish(odom)
